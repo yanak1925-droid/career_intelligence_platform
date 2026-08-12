@@ -1,0 +1,227 @@
+{
+  "id": "sEzqbvRx9lFIzmPu",
+  "name": "5. Career Intelligence Platform — Dashboard Builder",
+  "description": null,
+  "active": false,
+  "isArchived": false,
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "triggerAtHour": 9,
+              "triggerAtMinute": 47
+            }
+          ]
+        }
+      },
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.3,
+      "position": [
+        -416,
+        -32
+      ],
+      "id": "7c861f1b-db67-48da-a65a-c7fdca96cca5",
+      "name": "Schedule Trigger"
+    },
+    {
+      "parameters": {
+        "documentId": {
+          "__rl": true,
+          "value": "https://docs.google.com/spreadsheets/d/YOUR_GOOGLE_SHEET_ID/edit?gid=691460062#gid=691460062",
+          "mode": "url"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": "Analyzed Jobs",
+          "mode": "name"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.7,
+      "position": [
+        -160,
+        -32
+      ],
+      "id": "008b6bd1-0924-4fc5-a972-7350fa90ee20",
+      "name": "Get row(s) in sheet",
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": null,
+          "name": "Google Sheets account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// В листе Analyzed Jobs одна вакансия встречается несколько раз: разметка\n// дописывает строки при каждом прогоне. Перед подсчётом оставляем по одной\n// записи на job_id — самую свежую по analysis_date. Без этого метрики\n// завышаются кратно числу прогонов.\nconst byId = new Map();\nfor (const it of $input.all()) {\n  const id = String(it.json.job_id ?? it.json.link ?? '').trim();\n  if (!id) continue;\n  const prev = byId.get(id);\n  if (!prev || String(it.json.analysis_date ?? '') >= String(prev.json.analysis_date ?? '')) {\n    byId.set(id, it);\n  }\n}\nconst items = [...byId.values()];\n\n// Технические категории. RemoteOK — доска общего профиля, и три четверти\n// её вакансий к ИТ отношения не имеют. Навыки по ним считать бессмысленно:\n// топ собирался по уборщикам и водителям и показывал «sql (1)».\nconst TECH = new Set(['Engineering', 'AI', 'Data', 'Support', 'Product']);\n\nlet totalJobs = items.length;\nlet techJobs = 0;\nlet remoteCount = 0;\nconst skillsCount = {};\nconst sourcesCount = {};\nconst levelsCount = {};\nconst categoriesCount = {};\n\nfor (const item of items) {\n  const data = item.json;\n\n  const source = data.source || 'Unknown';\n  sourcesCount[source] = (sourcesCount[source] || 0) + 1;\n\n  if (data.is_remote === true || String(data.remote).toLowerCase() === 'true' ||\n      String(data.is_remote).toLowerCase().includes('remote')) {\n    remoteCount++;\n  }\n\n  const category = data.category || 'Other';\n  categoriesCount[category] = (categoriesCount[category] || 0) + 1;\n\n  const isTech = TECH.has(category);\n  if (isTech) techJobs++;\n\n  // Грейд и навыки считаем только по техническим вакансиям: у остальных\n  // «Senior» в заголовке означает senior manager, а не уровень разработчика.\n  if (!isTech) continue;\n\n  const level = data.level || data.seniority || 'Not Specified';\n  levelsCount[level] = (levelsCount[level] || 0) + 1;\n\n  const rawSkills = data.skills || data.stack || '';\n  if (rawSkills) {\n    const skillsArray = Array.isArray(rawSkills) ? rawSkills : String(rawSkills).split(',');\n    for (const skill of skillsArray) {\n      const cleanSkill = String(skill).trim().toLowerCase();\n      if (cleanSkill) skillsCount[cleanSkill] = (skillsCount[cleanSkill] || 0) + 1;\n    }\n  }\n}\n\nconst topSkills = Object.entries(skillsCount)\n  .sort((a, b) => b[1] - a[1])\n  .slice(0, 10)\n  .map(entry => `${entry[0]} (${entry[1]})`)\n  .join(', ');\n\n// Колонки таблицы остаются прежними — новых заголовков в листе Analytics\n// заводить не пришлось. Число технических вакансий отдельной ячейки не\n// требует: уровни считаются только по ним, поэтому их сумма и есть это число.\nconst analyticsReport = {\n  date: new Date().toISOString().split('T')[0],\n  total_jobs: totalJobs,\n  remote_jobs: remoteCount,\n  sources_breakdown: JSON.stringify(sourcesCount),\n  levels_breakdown: JSON.stringify(levelsCount),\n  top_skills: topSkills,\n};\n\nconsole.log('всего ' + totalJobs + ', технических ' + techJobs);\nreturn [{ json: analyticsReport }];\n"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        48,
+        -32
+      ],
+      "id": "915cae0d-3456-468e-8cd8-2e5fa3633bc4",
+      "name": "Code in JavaScript"
+    },
+    {
+      "parameters": {
+        "operation": "append",
+        "documentId": {
+          "__rl": true,
+          "value": "https://docs.google.com/spreadsheets/d/YOUR_GOOGLE_SHEET_ID/edit?gid=446333460#gid=446333460",
+          "mode": "url"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": "Analytics",
+          "mode": "name"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "date": "={{ $json.date }}",
+            "total_jobs": "={{ $json.total_jobs }}",
+            "remote_jobs": "={{ $json.remote_jobs }}",
+            "sources_breakdown": "={{ $json.sources_breakdown }}",
+            "levels_breakdown": "={{ $json.levels_breakdown }}",
+            "top_skills": "={{ $json.top_skills }}"
+          },
+          "matchingColumns": [],
+          "schema": [
+            {
+              "id": "date",
+              "displayName": "date",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "total_jobs",
+              "displayName": "total_jobs",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "remote_jobs",
+              "displayName": "remote_jobs",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "sources_breakdown",
+              "displayName": "sources_breakdown",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "levels_breakdown",
+              "displayName": "levels_breakdown",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "top_skills",
+              "displayName": "top_skills",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": false
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.7,
+      "position": [
+        256,
+        -32
+      ],
+      "id": "a4d89fb8-b36c-47c4-9eb3-ad53d0976dce",
+      "name": "Append row in sheet",
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": null,
+          "name": "Google Sheets account"
+        }
+      }
+    }
+  ],
+  "connections": {
+    "Schedule Trigger": {
+      "main": [
+        [
+          {
+            "node": "Get row(s) in sheet",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get row(s) in sheet": {
+      "main": [
+        [
+          {
+            "node": "Code in JavaScript",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code in JavaScript": {
+      "main": [
+        [
+          {
+            "node": "Append row in sheet",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate",
+    "availableInMCP": false
+  },
+  "nodeGroups": [],
+  "pinData": {},
+  "activeVersionId": "9a933297-a1d8-47d9-bce5-9b4a61d9381f",
+  "versionCounter": 38,
+  "sourceWorkflowId": null,
+  "tags": [],
+  "versionMetadata": {
+    "name": null,
+    "description": null
+  }
+}

@@ -1,0 +1,470 @@
+{
+  "id": "0a3v9UiYh9K338Rf",
+  "name": "2. Career Intelligence Platform — Hacker News Job Collector",
+  "description": null,
+  "active": false,
+  "isArchived": false,
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "triggerAtHour": 9,
+              "triggerAtMinute": 31
+            }
+          ]
+        }
+      },
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.3,
+      "position": [
+        -1056,
+        -176
+      ],
+      "id": "0eac9b84-c68f-4f19-ae85-89ab8bb9850d",
+      "name": "Schedule Trigger"
+    },
+    {
+      "parameters": {
+        "url": "https://hacker-news.firebaseio.com/v0/jobstories.json",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        -720,
+        -144
+      ],
+      "id": "588e9dd8-11b5-4d22-b5a8-e670337d7d7d",
+      "name": "HTTP Request",
+      "executeOnce": true
+    },
+    {
+      "parameters": {
+        "jsCode": "// Забираем входящие данные\nconst inputData = $input.first().json;\n\n// Если это массив чисел (ID)\nif (Array.isArray(inputData)) {\n  return inputData.map(id => ({ json: { id: id } }));\n} \n\n// Если это массив объектов n8n ($input.all())\nreturn $input.all().map(item => {\n  const val = item.json;\n  return {\n    json: typeof val === 'object' ? val : { id: val }\n  };\n});;"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -624,
+        112
+      ],
+      "id": "2d97e52c-d9fb-46b5-9738-3033d3af3317",
+      "name": "Code in JavaScript"
+    },
+    {
+      "parameters": {
+        "url": "=https://hacker-news.firebaseio.com/v0/item/{{ $json.id }}.json",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        -432,
+        -160
+      ],
+      "id": "60d80cca-9ad0-42f6-bb84-f8a7a3d5ea43",
+      "name": "HTTP Request1"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Приводим ответ Hacker News к той же структуре, что у RemoteOK.\nconst MAX_AGE_DAYS = 7;\nconst edge = new Date();\nedge.setUTCDate(edge.getUTCDate() - MAX_AGE_DAYS);\nconst cutoff = edge.toISOString().slice(0, 10);\n\nfunction onlyDate(value) {\n  const s = String(value || '');\n  return s.length >= 10 ? s.slice(0, 10) : '';\n}\n\nconst rows = [];\nfor (const item of $input.all()) {\n  const data = item.json;\n  const title = String(data.title || '');\n\n  // время у Hacker News приходит в секундах Unix\n  const published = data.time ? onlyDate(new Date(data.time * 1000).toISOString()) : '';\n  if (!published || published < cutoff) continue;\n\n  // Компания раньше записывалась заглушкой 'HackerNews Post'.\n  // В заголовках вида \"Truemetrics (YC S23) Is Hiring in Berlin – GTM Lead\"\n  // название стоит первым, до пометки YC и слов \"is hiring\".\n  let company = '';\n  const m = title.match(/^(.+?)\\s*(?:\\(YC[^)]*\\))?\\s+(?:is|Is)\\s+(?:hiring|Hiring)/);\n  if (m) company = m[1].replace(/\\s*\\(YC[^)]*\\)\\s*/, '').trim();\n  if (!company) company = 'HackerNews';\n\n  let location = '';\n  const loc = title.match(/\\b(?:in|In)\\s+([A-Z][\\w .-]+?)(?:\\s*[–—-]|$)/);\n  if (loc) location = loc[1].trim();\n\n  let position = title;\n  const pos = title.match(/(?:is|Is)\\s+(?:hiring|Hiring)\\s*(?:in\\s+[A-Z][\\w .-]+?\\s*[–—-]\\s*)?(.+)$/);\n  if (pos && pos[1].trim().length > 2) position = pos[1].trim();\n\n  rows.push({\n    json: {\n      job_id: data.id,\n      date: published,\n      source: 'HackerNews',\n      company,\n      position,\n      location,\n      tags: '',\n      link: data.url || `https://news.ycombinator.com/item?id=${data.id}`,\n      description: (data.text || '').replace(/<[^>]*>/g, '').slice(0, 600)\n    }\n  });\n}\n\nconsole.log('свежих вакансий: ' + rows.length + ', отсечка ' + cutoff);\nreturn rows;\n"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -256,
+        112
+      ],
+      "id": "85accf37-872f-4b09-a96c-baaba580c288",
+      "name": "Code in JavaScript1"
+    },
+    {
+      "parameters": {
+        "documentId": {
+          "__rl": true,
+          "value": "https://docs.google.com/spreadsheets/d/YOUR_GOOGLE_SHEET_ID/edit?gid=0#gid=0",
+          "mode": "url"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": "https://docs.google.com/spreadsheets/d/YOUR_GOOGLE_SHEET_ID/edit?gid=0#gid=0",
+          "mode": "url"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.7,
+      "position": [
+        -864,
+        128
+      ],
+      "id": "94e668b1-f1f0-4d62-9df4-efefca5dd220",
+      "name": "Get row(s) in sheet",
+      "alwaysOutputData": true,
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": null,
+          "name": "Google Sheets account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "append",
+        "documentId": {
+          "__rl": true,
+          "value": "https://docs.google.com/spreadsheets/d/YOUR_GOOGLE_SHEET_ID/edit?gid=0#gid=0",
+          "mode": "url"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": "https://docs.google.com/spreadsheets/d/YOUR_GOOGLE_SHEET_ID/edit?gid=0#gid=0",
+          "mode": "url"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "job_id": "={{ $json.job_id }}",
+            "date": "={{ $json.date }}",
+            "source": "={{ $json.source }}",
+            "company": "={{ $json.company }}",
+            "position": "={{ $json.position }}",
+            "location": "={{ $json.location }}",
+            "tags": "={{ $json.tags }}",
+            "link": "={{ $json.link }}",
+            "description": "={{ $json.description }}"
+          },
+          "matchingColumns": [],
+          "schema": [
+            {
+              "id": "job_id",
+              "displayName": "job_id",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "date",
+              "displayName": "date",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "company",
+              "displayName": "company",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "position",
+              "displayName": "position",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "location",
+              "displayName": "location",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "tags",
+              "displayName": "tags",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "link",
+              "displayName": "link",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "description",
+              "displayName": "description",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "analyzed",
+              "displayName": "analyzed",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "source",
+              "displayName": "source",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": false
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.7,
+      "position": [
+        720,
+        112
+      ],
+      "id": "a0ffc37a-0bca-4014-b712-2427a99024d6",
+      "name": "Append row in sheet",
+      "alwaysOutputData": true,
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": null,
+          "name": "Google Sheets account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// Складываем обе ветки Hacker News и убираем то, что уже есть в таблице.\n// Лента YC-вакансий (jobstories) и тред «Who is hiring» пересекаются редко,\n// но job_id из них могут совпасть — сверяем и между собой тоже.\nconst existing = new Set(\n  $('Get row(s) in sheet').all()\n    .map(i => String(i.json.job_id ?? '').trim())\n    .filter(Boolean)\n);\n\nconst fromThread = $input.all().map(i => i.json);\nlet fromFeed = [];\ntry {\n  fromFeed = $('Code in JavaScript1').all().map(i => i.json);\n} catch (e) {\n  fromFeed = [];   // ветка ленты могла ничего не вернуть\n}\n\nconst seen = new Set();\nconst out = [];\nfor (const row of fromFeed.concat(fromThread)) {\n  const id = String(row.job_id ?? '').trim();\n  if (!id || existing.has(id) || seen.has(id)) continue;\n  seen.add(id);\n  out.push({ json: row });\n}\n\nconsole.log('лента: ' + fromFeed.length + ', тред: ' + fromThread.length +\n            ', новых к записи: ' + out.length);\nreturn out;\n"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        528,
+        112
+      ],
+      "id": "6196dbf9-dbc1-484d-b1dd-f88ffd1311b7",
+      "name": "Code in JavaScript2"
+    },
+    {
+      "parameters": {
+        "url": "https://hn.algolia.com/api/v1/search_by_date?tags=story,author_whoishiring&hitsPerPage=6",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        -400,
+        256
+      ],
+      "id": "bb200000-0000-4000-8000-000000000001",
+      "name": "HTTP Request2",
+      "executeOnce": true
+    },
+    {
+      "parameters": {
+        "jsCode": "// Из свежих тредов пользователя whoishiring берём именно «Who is hiring?»:\n// рядом с ним каждый месяц выходит «Who wants to be hired?» — там резюме, а не вакансии.\nconst hits = $input.first().json.hits || [];\nconst thread = hits.find(h => /who is hiring/i.test(h.title || ''));\nif (!thread) {\n  console.log('свежий тред Who is hiring не найден');\n  return [];\n}\nconsole.log('тред: ' + thread.title + ' (' + thread.objectID + ')');\nreturn [{ json: { thread_id: thread.objectID, title: thread.title } }];\n"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -128,
+        224
+      ],
+      "id": "bb200000-0000-4000-8000-000000000002",
+      "name": "Code in JavaScript3"
+    },
+    {
+      "parameters": {
+        "url": "=https://hn.algolia.com/api/v1/items/{{ $json.thread_id }}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        80,
+        224
+      ],
+      "id": "bb200000-0000-4000-8000-000000000003",
+      "name": "HTTP Request3",
+      "executeOnce": true
+    },
+    {
+      "parameters": {
+        "jsCode": "// Разбор ежемесячного треда «Ask HN: Who is hiring?».\n// Каждое объявление — комментарий верхнего уровня в формате\n//   Компания | Локация | Тип занятости | Должность | ссылка\n// Разделители соблюдают не все, поэтому поля определяются по содержимому,\n// а не по номеру позиции.\nconst MAX_AGE_DAYS = 7;\nconst edge = new Date();\nedge.setUTCDate(edge.getUTCDate() - MAX_AGE_DAYS);\nconst cutoff = edge.toISOString().slice(0, 10);\n\nconst ROLE = /\\b(engineer|developer|scientist|manager|designer|analyst|lead|architect|devops|sre|researcher|intern|founding|cto|programmer|consultant|specialist|director|role|position)s?\\b/i;\nconst PLACE = /\\b(remote|onsite|on-site|hybrid|san francisco|new york|nyc|london|berlin|austin|seattle|boston|toronto|chicago|denver|amsterdam|paris|bangalore|usa|u\\.s\\.|uk|eu|europe|canada|india|germany|anywhere|worldwide)\\b|[A-Z][a-z]+,\\s*[A-Z]{2}\\b/;\nconst JOBTYPE = /\\b(full[- ]time|part[- ]time|contract|internship|freelance)\\b/i;\n// Название должности как таковое: несколько слов с заглавной, оканчивающихся\n// ролевым словом. Пересказ вроде «lead investor but also a partner» под шаблон\n// не подходит — пустая ячейка честнее обрывка описания.\nconst TITLE = /\\b((?:[A-Z][\\w\\/&+-]*\\s+){0,3}(?:Engineer|Developer|Scientist|Manager|Designer|Analyst|Architect|Researcher|Programmer|Consultant|Specialist|Director)s?)\\b/;\n\nfunction clean(html) {\n  let t = String(html || '').replace(/<[^>]+>/g, ' ');\n  const map = { '&#x2F;': '/', '&amp;': '&', '&quot;': '\"', '&#x27;': \"'\",\n                '&gt;': '>', '&lt;': '<', '&nbsp;': ' ' };\n  for (const k of Object.keys(map)) t = t.split(k).join(map[k]);\n  return t.replace(/\\s+/g, ' ').trim();\n}\n\nfunction tidy(s, limit) {\n  let t = String(s || '').replace(/https?:\\/\\/\\S+/g, '').replace(/^[\\s\\-–—|,]+|[\\s\\-–—|,]+$/g, '');\n  if (t.length > limit) t = t.slice(0, limit).replace(/\\s+\\S*$/, '');\n  const opened = (t.split('(').length - 1) - (t.split(')').length - 1);\n  if (opened > 0) t = t.split('(').slice(0, -opened).join('(');\n  return t.replace(/^[\\s\\-–—|,(]+|[\\s\\-–—|,(]+$/g, '');\n}\n\nconst thread = $input.first().json;\nconst kids = (thread.children || []).filter(c => c && c.text);\n\nconst rows = [];\nfor (const c of kids) {\n  const published = String(c.created_at || '').slice(0, 10);\n  if (!published || published < cutoff) continue;\n\n  const text = clean(c.text);\n  const parts = text.split('|').map(p => p.trim()).filter(Boolean);\n  if (parts.length < 2) continue;   // объявление без разделителей — не разобрать\n\n  const company = tidy(parts[0].replace(/\\s*\\([^)]*\\)\\s*$/, ''), 50);\n  if (!company || company.length > 50) continue;\n\n  const labels = parts.slice(1).filter(p => p.length <= 110);\n\n  let position = '';\n  for (const p of labels) {\n    if (ROLE.test(p) && !JOBTYPE.test(p.trim())) { position = tidy(p, 80); break; }\n  }\n  if (!position) {\n    const m = text.match(TITLE);\n    position = m ? tidy(m[1], 60) : '';\n  }\n\n  let location = '';\n  for (const p of labels) {\n    if (p !== position && PLACE.test(p)) { location = tidy(p, 50); break; }\n  }\n\n  const jobtype = (labels.find(p => JOBTYPE.test(p)) || '').slice(0, 30);\n\n  rows.push({ json: {\n    job_id: c.id,\n    date: published,\n    source: 'HackerNews',\n    company,\n    position,\n    location,\n    tags: jobtype,\n    link: 'https://news.ycombinator.com/item?id=' + c.id,\n    description: text.slice(0, 600),\n  }});\n}\n\nconsole.log('из треда «' + (thread.title || '') + '»: ' + rows.length + ' вакансий, отсечка ' + cutoff);\nreturn rows;\n"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        288,
+        224
+      ],
+      "id": "bb200000-0000-4000-8000-000000000004",
+      "name": "Code in JavaScript4"
+    }
+  ],
+  "connections": {
+    "Schedule Trigger": {
+      "main": [
+        [
+          {
+            "node": "Get row(s) in sheet",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "HTTP Request": {
+      "main": [
+        [
+          {
+            "node": "Code in JavaScript",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code in JavaScript": {
+      "main": [
+        [
+          {
+            "node": "HTTP Request1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "HTTP Request1": {
+      "main": [
+        [
+          {
+            "node": "Code in JavaScript1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code in JavaScript1": {
+      "main": [
+        []
+      ]
+    },
+    "Get row(s) in sheet": {
+      "main": [
+        [
+          {
+            "node": "HTTP Request",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "HTTP Request2",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code in JavaScript2": {
+      "main": [
+        [
+          {
+            "node": "Append row in sheet",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "HTTP Request2": {
+      "main": [
+        [
+          {
+            "node": "Code in JavaScript3",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code in JavaScript3": {
+      "main": [
+        [
+          {
+            "node": "HTTP Request3",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "HTTP Request3": {
+      "main": [
+        [
+          {
+            "node": "Code in JavaScript4",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code in JavaScript4": {
+      "main": [
+        [
+          {
+            "node": "Code in JavaScript2",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate",
+    "availableInMCP": false
+  },
+  "nodeGroups": [],
+  "pinData": {},
+  "activeVersionId": "96e44163-e834-44dc-a31d-8bd06e373c93",
+  "versionCounter": 37,
+  "sourceWorkflowId": null,
+  "tags": [],
+  "versionMetadata": {
+    "name": null,
+    "description": null
+  }
+}

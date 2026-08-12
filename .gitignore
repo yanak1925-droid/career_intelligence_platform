@@ -1,0 +1,21 @@
+# Секреты — никогда не публиковать
+.env
+*.key
+credentials*.json
+
+# Данные n8n: база с воркфлоу, паролями и ключом шифрования
+.n8n/
+database.sqlite
+database.sqlite-*
+
+# Бэкапы и прежние выгрузки воркфлоу — в репозитории только актуальная папка
+backup-*/
+workflows-*-*/
+workflows-restored/
+
+# Служебное
+node_modules/
+.DS_Store
+Thumbs.db
+*.log
+*.tmp

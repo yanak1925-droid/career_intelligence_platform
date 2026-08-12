@@ -1,0 +1,311 @@
+{
+  "id": "0pkGFHS92zPTqvYY",
+  "name": "3. Career Intelligence Platform — Job Analyzer",
+  "description": null,
+  "active": false,
+  "isArchived": false,
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "triggerAtHour": 9,
+              "triggerAtMinute": 40
+            }
+          ]
+        }
+      },
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.3,
+      "position": [
+        -600,
+        -100
+      ],
+      "id": "ja-sched",
+      "name": "Schedule Trigger"
+    },
+    {
+      "parameters": {
+        "documentId": {
+          "__rl": true,
+          "value": "https://docs.google.com/spreadsheets/d/YOUR_GOOGLE_SHEET_ID/edit#gid=0",
+          "mode": "url"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": "https://docs.google.com/spreadsheets/d/YOUR_GOOGLE_SHEET_ID/edit#gid=0",
+          "mode": "url"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.7,
+      "position": [
+        -380,
+        0
+      ],
+      "id": "ja-read-jobs",
+      "name": "Get row(s) in sheet",
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": null,
+          "name": "Google Sheets account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "documentId": {
+          "__rl": true,
+          "value": "https://docs.google.com/spreadsheets/d/YOUR_GOOGLE_SHEET_ID/edit#gid=691460062",
+          "mode": "url"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": "https://docs.google.com/spreadsheets/d/YOUR_GOOGLE_SHEET_ID/edit#gid=691460062",
+          "mode": "url"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.7,
+      "position": [
+        -160,
+        0
+      ],
+      "id": "ja-read-analyzed",
+      "name": "Get row(s) in sheet1",
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": null,
+          "name": "Google Sheets account"
+        }
+      },
+      "alwaysOutputData": true,
+      "executeOnce": true
+    },
+    {
+      "parameters": {
+        "jsCode": "// Разметка вакансий: навыки, грейд, категория, удалённость.\n//\n// Размечаем только то, чего ещё нет в листе Analyzed Jobs: иначе каждый\n// запуск дописывал бы весь лист заново и данные множились.\nconst already = new Set(\n  $('Get row(s) in sheet1').all()\n    .map(i => String(i.json.job_id ?? '').trim())\n    .filter(Boolean)\n);\n\n// Значения из таблицы приводим к строке явно: Google Sheets отдаёт числа\n// числами, и заголовок вида \"2025\" ронял .toLowerCase().\n// Ищем в заголовке, тегах и описании: грейд в заголовке указывают редко.\n// Поиск по целым словам — иначе \"ai\" находится в email, available, training.\nconst keywords = {\n  'sql': ['sql'],\n  'python': ['python'],\n  'api': ['api', 'apis', 'rest api'],\n  'javascript': ['javascript', 'js'],\n  'react': ['react', 'react.js', 'reactjs'],\n  'node': ['node', 'node.js', 'nodejs'],\n  'aws': ['aws', 'amazon web services'],\n  'docker': ['docker'],\n  'kubernetes': ['kubernetes', 'k8s'],\n  'ai': ['ai', 'artificial intelligence'],\n  'machine learning': ['machine learning', 'ml'],\n  'project manager': ['project manager', 'project management'],\n};\n\nfunction hasWord(str, word) {\n  const safe = word.replace(/[.*+?^${}()|[\\]\\\\]/g, '\\\\$&');\n  return new RegExp('(^|[^a-z0-9+#])' + safe + '($|[^a-z0-9+#])', 'i').test(str);\n}\n\n// Категория вакансии определяется по должности.\n//\n// Раньше значением по умолчанию было 'Engineering', и всё нераспознанное\n// становилось инженерной вакансией: 362 записи из 549, включая «Cleaner»\n// и «Traffic Controller». Теперь по умолчанию 'Other' — источник RemoteOK\n// это доска общего профиля, и большая часть его вакансий к ИТ не относится.\n//\n// Теги в разборе не участвуют: у RemoteOK они слишком широкие — у вакансии\n// «HR Generalist» стоит тег «support», и по тегам она становится инженером\n// поддержки.\n//\n// Множественное число обязательно во всех шаблонах: \\bengineer\\b не совпадает\n// со словом «Engineers», и без «s?» теряется половина технических вакансий.\nconst CATEGORY_RULES = [\n  ['AI', /\\b(ai|artificial intelligence|machine learning|ml|deep learning|llm|nlp|computer vision|data scientists?|ml engineers?)\\b/i],\n  ['Data', /\\b(data engineers?|data analysts?|analytics engineers?|bi analysts?|business intelligence|etl|data warehouse|database administrators?|dba)\\b/i],\n  ['Support', /\\b(support engineers?|technical support|customer support|solutions engineers?|implementation (engineers?|specialists?)|support specialists?|helpdesk|service desk)\\b/i],\n  ['Product', /\\b(product managers?|product owners?|project managers?|program managers?|scrum masters?|delivery managers?|product designers?|ux|ui designers?)\\b/i],\n  ['Engineering', /\\b(software engineers?|engineering|engineers?|developers?|programmers?|architects?|devops|sre|site reliability|full[- ]?stack|frontend|front[- ]?end|backend|back[- ]?end|mobile developers?|ios|android|qa|swe|cto|technical leads?|tech leads?)\\b/i],\n];\n\nfunction detectCategory(jobTitle) {\n  for (const [name, rx] of CATEGORY_RULES) {\n    if (rx.test(jobTitle)) return name;\n  }\n  return 'Other';\n}\n\nfunction detectLevel(str) {\n  if (/\\bjunior\\b|\\bjr\\b|\\bintern\\b|\\bentry[- ]level\\b/.test(str)) return 'Junior';\n  if (/\\bsenior\\b|\\bsr\\b|\\blead\\b|\\bprincipal\\b|\\bstaff\\b/.test(str)) return 'Senior';\n  if (/\\bmiddle\\b|\\bmid[- ]level\\b|\\bmid\\b/.test(str)) return 'Middle';\n  return null;\n}\n\nconst today = new Date().toISOString().slice(0, 10);\nconst out = [];\n\n// Данные берём по ссылке на ноду чтения: нода Analyzed Jobs стоит с флагом\n// «выполнить один раз» и пропускает дальше единственный элемент.\nfor (const item of $('Get row(s) in sheet').all()) {\n  const id = String(item.json.job_id ?? '').trim();\n  if (!id || already.has(id)) continue;\n\n  const position = String(item.json.position ?? '').toLowerCase();\n  const tags = String(item.json.tags ?? '').toLowerCase();\n  const description = String(item.json.description ?? '').toLowerCase();\n\n  const title = position + ' ' + tags;\n  const text = title + ' ' + description;\n\n  const skills = Object.keys(keywords)\n    .filter(skill => keywords[skill].some(v => hasWord(text, v)));\n\n  const level = detectLevel(title) || detectLevel(description) || 'Unknown';\n\n  const category = detectCategory(position);\n\n  const is_remote = hasWord(text, 'remote') || text.includes('digital nomad');\n\n  // Дата разметки по логике расписания: вакансия попадает в сбор на следующее\n  // утро после публикации, разметка идёт в 16:00 того же дня.\n  const published = String(item.json.date ?? '').slice(0, 10);\n  let analysisDay = today;\n  if (published && published < today) {\n    const next = new Date(published + 'T00:00:00Z');\n    next.setUTCDate(next.getUTCDate() + 1);\n    const candidate = next.toISOString().slice(0, 10);\n    analysisDay = candidate <= today ? candidate : today;\n  }\n\n  out.push({ json: {\n    job_id: item.json.job_id,\n    date: published,\n    source: item.json.source,\n    company: item.json.company,\n    position: item.json.position,\n    is_remote,\n    level,\n    category,\n    skills: skills.join(', '),\n    analysis_date: analysisDay,\n  }});\n}\n\nconsole.log('новых вакансий к разметке: ' + out.length + ', уже размечено: ' + already.size);\nreturn out;\n"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        60,
+        0
+      ],
+      "id": "ja-code",
+      "name": "Code in JavaScript"
+    },
+    {
+      "parameters": {
+        "operation": "append",
+        "documentId": {
+          "__rl": true,
+          "value": "https://docs.google.com/spreadsheets/d/YOUR_GOOGLE_SHEET_ID/edit#gid=691460062",
+          "mode": "url"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": "https://docs.google.com/spreadsheets/d/YOUR_GOOGLE_SHEET_ID/edit#gid=691460062",
+          "mode": "url"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "job_id": "={{ $json.job_id }}",
+            "date": "={{ $json.date }}",
+            "source": "={{ $json.source }}",
+            "company": "={{ $json.company }}",
+            "position": "={{ $json.position }}",
+            "is_remote": "={{ $json.is_remote }}",
+            "level": "={{ $json.level }}",
+            "category": "={{ $json.category }}",
+            "skills": "={{ $json.skills }}",
+            "analysis_date": "={{ $json.analysis_date }}"
+          },
+          "matchingColumns": [],
+          "schema": [
+            {
+              "id": "job_id",
+              "displayName": "job_id",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "date",
+              "displayName": "date",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "source",
+              "displayName": "source",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "company",
+              "displayName": "company",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "position",
+              "displayName": "position",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "is_remote",
+              "displayName": "is_remote",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "level",
+              "displayName": "level",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "category",
+              "displayName": "category",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "skills",
+              "displayName": "skills",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "analysis_date",
+              "displayName": "analysis_date",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": false
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.7,
+      "position": [
+        280,
+        0
+      ],
+      "id": "ja-append",
+      "name": "Append row in sheet",
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": null,
+          "name": "Google Sheets account"
+        }
+      }
+    }
+  ],
+  "connections": {
+    "Schedule Trigger": {
+      "main": [
+        [
+          {
+            "node": "Get row(s) in sheet",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get row(s) in sheet": {
+      "main": [
+        [
+          {
+            "node": "Get row(s) in sheet1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get row(s) in sheet1": {
+      "main": [
+        [
+          {
+            "node": "Code in JavaScript",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code in JavaScript": {
+      "main": [
+        [
+          {
+            "node": "Append row in sheet",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "nodeGroups": [],
+  "pinData": {},
+  "activeVersionId": "3923145a-f924-498e-9df0-79c9ecae591a",
+  "versionCounter": 49,
+  "sourceWorkflowId": null,
+  "tags": [],
+  "versionMetadata": {
+    "name": null,
+    "description": null
+  }
+}

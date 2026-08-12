@@ -1,0 +1,21 @@
+version: '3.8'
+
+volumes:
+  n8n_storage:
+
+services:
+  n8n:
+    image: docker.n8n.io/n8nio/n8n
+    restart: always
+    ports:
+      - "5678:5678"
+    environment:
+      - N8N_HOST=localhost
+      - WEBHOOK_URL=http://localhost:5678/
+      # Часовой пояс определяет, в какое время сработают расписания.
+      # Укажите свой — иначе цепочка запустится по времени UTC.
+      - GENERIC_TIMEZONE=Europe/Bucharest
+    volumes:
+      # база с воркфлоу и учётными данными живёт в томе, а не в контейнере:
+      # при обновлении образа настройки не теряются
+      - n8n_storage:/home/node/.n8n

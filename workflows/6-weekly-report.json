@@ -1,0 +1,149 @@
+{
+  "id": "AWCP9s71KlQcXwpc",
+  "name": "6. Career Intelligence Platform — Weekly Report",
+  "description": null,
+  "active": false,
+  "isArchived": false,
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "triggerAtHour": 9,
+              "triggerAtMinute": 50,
+              "field": "weeks",
+              "triggerAtDay": [
+                3
+              ]
+            }
+          ]
+        }
+      },
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.3,
+      "position": [
+        -432,
+        -112
+      ],
+      "id": "884e222a-f571-46a1-bc40-e006be9e8ae3",
+      "name": "Schedule Trigger"
+    },
+    {
+      "parameters": {
+        "documentId": {
+          "__rl": true,
+          "value": "https://docs.google.com/spreadsheets/d/YOUR_GOOGLE_SHEET_ID/edit?gid=446333460#gid=446333460",
+          "mode": "url"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": "Analytics",
+          "mode": "name"
+        },
+        "options": {
+          "returnFirstMatch": true
+        }
+      },
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.7,
+      "position": [
+        -272,
+        64
+      ],
+      "id": "0476c75a-a86c-49c4-b748-0756204f3364",
+      "name": "Get row(s) in sheet",
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": null,
+          "name": "Google Sheets account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// Берём последнюю строку сводки — её только что записал Dashboard Builder.\nconst items = $input.all();\nconst item = items[items.length - 1].json;\n\n// В таблице разбивки хранятся строкой JSON: {\"RemoteOK\":409,\"HackerNews\":140}.\n// В сообщение это попадать не должно — разворачиваем в список.\nconst RU_LEVEL = {\n  Unknown: 'не указан',\n  'Not Specified': 'не указан',\n  Junior: 'Junior',\n  Middle: 'Middle',\n  Senior: 'Senior',\n};\n\nfunction parse(raw) {\n  try {\n    return typeof raw === 'string' ? JSON.parse(raw) : (raw || {});\n  } catch (e) {\n    return null;   // формат неожиданный — покажем как есть\n  }\n}\n\nfunction breakdown(raw, dict) {\n  const obj = parse(raw);\n  if (!obj) return String(raw || '—');\n  const rows = Object.entries(obj).sort((a, b) => b[1] - a[1]);\n  if (!rows.length) return '—';\n  const total = rows.reduce((s, r) => s + r[1], 0);\n  return rows\n    .map(([k, v]) => {\n      const name = (dict && dict[k]) || k;\n      const share = total ? Math.round(100 * v / total) : 0;\n      return '• ' + name + ' — ' + v + ' (' + share + '%)';\n    })\n    .join('\\n');\n}\n\n// Навыки приходят строкой «sql (120), python (98), ...» — разбираем на список.\nfunction skillList(raw) {\n  const parts = String(raw || '').split(',').map(s => s.trim()).filter(Boolean);\n  if (!parts.length) return '—';\n  return parts.slice(0, 10).map((p, i) => (i + 1) + '. ' + p).join('\\n');\n}\n\nconst total = Number(item.total_jobs) || 0;\nconst remoteShare = total ? Math.round(100 * Number(item.remote_jobs) / total) : 0;\n\n// Уровни и навыки сводка считает только по техническим вакансиям, поэтому\n// сумма уровней и есть их число. Отдельной колонки в таблице для этого нет.\nconst levels = parse(item.levels_breakdown) || {};\nconst tech = Object.values(levels).reduce((s, v) => s + Number(v || 0), 0);\nconst techShare = total ? Math.round(100 * tech / total) : 0;\n\nconst reportText = `📊 *Еженедельный отчёт: рынок труда*\n📅 Дата среза: ${String(item.date).slice(0, 10)}\n\n🔹 *Основные метрики*\n• Собрано вакансий: *${total}*\n• Из них технических: *${tech}* (${techShare}%)\n• Удалённая работа: *${item.remote_jobs}* (${remoteShare}%)\n\n📈 *Топ навыков* (по техническим вакансиям)\n${skillList(item.top_skills)}\n\n📌 *Источники*\n${breakdown(item.sources_breakdown)}\n\n🎯 *Уровни* (по техническим вакансиям)\n${breakdown(item.levels_breakdown, RU_LEVEL)}`;\n\nreturn { json: { reportText } };\n"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -128,
+        -112
+      ],
+      "id": "0321c791-5ed5-4cb1-803a-f03434d7768a",
+      "name": "Code in JavaScript"
+    },
+    {
+      "parameters": {
+        "chatId": "YOUR_TELEGRAM_CHAT_ID",
+        "text": "={{ $json.reportText }}",
+        "additionalFields": {}
+      },
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [
+        16,
+        64
+      ],
+      "id": "dc2282f7-5de4-4f34-9b01-66f72613f7fa",
+      "name": "Send a text message",
+      "webhookId": "fe9df11c-12d2-4271-8fb5-7646a4a25e6d",
+      "credentials": {
+        "telegramApi": {
+          "id": null,
+          "name": "Telegram account"
+        }
+      }
+    }
+  ],
+  "connections": {
+    "Schedule Trigger": {
+      "main": [
+        [
+          {
+            "node": "Get row(s) in sheet",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get row(s) in sheet": {
+      "main": [
+        [
+          {
+            "node": "Code in JavaScript",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code in JavaScript": {
+      "main": [
+        [
+          {
+            "node": "Send a text message",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate",
+    "availableInMCP": false
+  },
+  "nodeGroups": [],
+  "pinData": {},
+  "activeVersionId": "02d1904c-afea-4069-8251-129c869323a5",
+  "versionCounter": 48,
+  "sourceWorkflowId": null,
+  "tags": [],
+  "versionMetadata": {
+    "name": null,
+    "description": null
+  }
+}

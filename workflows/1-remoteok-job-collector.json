@@ -1,0 +1,321 @@
+{
+  "id": "rBTdcekJCCPqs7EG",
+  "name": "1. Career Intelligence Platform — RemoteOK Job Collector",
+  "description": null,
+  "active": false,
+  "isArchived": false,
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "triggerAtHour": 9,
+              "triggerAtMinute": 30
+            }
+          ]
+        }
+      },
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.3,
+      "position": [
+        0,
+        0
+      ],
+      "id": "82760cbc-35e1-4012-939d-61ff9c0aba66",
+      "name": "Schedule Trigger"
+    },
+    {
+      "parameters": {
+        "url": "https://remoteok.com/api",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        208,
+        0
+      ],
+      "id": "db9e890e-4729-417d-b5b4-460220788389",
+      "name": "HTTP Request"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Приводим ответ RemoteOK к структуре таблицы.\n// Первый элемент выдачи — юридическое уведомление, а не вакансия.\nconst jobs = items.slice(1);\n\n// Берём только свежие объявления: в выдаче попадаются вакансии месячной\n// давности, и без отбора таблица наполняется старыми датами.\nconst MAX_AGE_DAYS = 7;\nconst edge = new Date();\nedge.setUTCDate(edge.getUTCDate() - MAX_AGE_DAYS);\nconst cutoff = edge.toISOString().slice(0, 10);\n\n// В таблицу пишем дату публикации без времени: для отчётности часы не нужны.\nfunction onlyDate(value) {\n  const s = String(value || '');\n  return s.length >= 10 ? s.slice(0, 10) : '';\n}\n\nconst rows = [];\nfor (const item of jobs) {\n  const job = item.json;\n\n  const published = onlyDate(job.date) ||\n    (job.epoch ? onlyDate(new Date(job.epoch * 1000).toISOString()) : '');\n  if (!published || published < cutoff) continue;\n\n  rows.push({\n    json: {\n      job_id: job.id || '',\n      date: published,\n      source: 'RemoteOK',\n      company: job.company || '',\n      position: job.position || '',\n      location: job.location || '',\n      tags: (job.tags || []).join(', '),\n      link: job.apply_url || job.url || '',\n      // описание нужно разметке: грейд и навыки чаще всего именно в нём\n      description: (job.description || '').replace(/<[^>]*>/g, '').slice(0, 600)\n    }\n  });\n}\n\nconsole.log('свежих вакансий: ' + rows.length + ' из ' + jobs.length + ', отсечка ' + cutoff);\nreturn rows;\n"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        416,
+        0
+      ],
+      "id": "c9963069-2072-47c3-ad6a-b9842daefe39",
+      "name": "Code in JavaScript"
+    },
+    {
+      "parameters": {
+        "operation": "append",
+        "documentId": {
+          "__rl": true,
+          "value": "https://docs.google.com/spreadsheets/d/YOUR_GOOGLE_SHEET_ID/edit?gid=0#gid=0",
+          "mode": "url"
+        },
+        "sheetName": {
+          "__rl": true,
+          "mode": "name",
+          "value": "Jobs"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "date": "={{$json.date}}",
+            "company": "={{$json.company}}",
+            "position": "={{$json.position}}",
+            "location": "={{$json.location}}",
+            "tags": "={{$json.tags}}",
+            "link": "={{ $json.link}}",
+            "description": "={{$json.description}}",
+            "job_id": "={{$json.job_id}}",
+            "source": "={{ $json.source }}"
+          },
+          "matchingColumns": [],
+          "schema": [
+            {
+              "id": "job_id",
+              "displayName": "job_id",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "date",
+              "displayName": "date",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "company",
+              "displayName": "company",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "position",
+              "displayName": "position",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "location",
+              "displayName": "location",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "tags",
+              "displayName": "tags",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "link",
+              "displayName": "link",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "description",
+              "displayName": "description",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "analyzed",
+              "displayName": "analyzed",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "source",
+              "displayName": "source",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": false
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.7,
+      "position": [
+        1040,
+        0
+      ],
+      "id": "7729ee42-9e20-4f20-b422-9d2f4414f9b7",
+      "name": "Append row in sheet",
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": null,
+          "name": "Google Sheets account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "documentId": {
+          "__rl": true,
+          "value": "https://docs.google.com/spreadsheets/d/YOUR_GOOGLE_SHEET_ID/edit?gid=0#gid=0",
+          "mode": "url"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": "Jobs",
+          "mode": "name"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.7,
+      "position": [
+        624,
+        0
+      ],
+      "id": "f1ba55a0-19ad-40f9-bdcf-908712b3a9a1",
+      "name": "Get row(s) in sheet",
+      "executeOnce": true,
+      "alwaysOutputData": true,
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": null,
+          "name": "Google Sheets account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// 1. Получаем новые вакансии из первого кода\nconst newJobs = $('Code in JavaScript').all();\n\n// 2. Получаем данные из Google Таблицы\nconst sheetRows = $('Get row(s) in sheet').all();\n\n// Если таблица пустая или в ней только пустой объект — отдаем все новые вакансии\nif (!sheetRows.length || !sheetRows[0].json || Object.keys(sheetRows[0].json).length === 0) {\n  return newJobs;\n}\n\n// 3. Собираем список всех имеющихся job_id из таблицы\nconst existingIds = new Set(\n  sheetRows\n    .map(row => String(row.json.job_id || '').trim())\n    .filter(Boolean)\n);\n\n// 4. Фильтруем: оставляем только те вакансии, ID которых нет в таблице\nconst uniqueJobs = newJobs.filter(job => {\n  const jobId = String(job.json.job_id || '').trim();\n  return jobId && !existingIds.has(jobId);\n});\n\nreturn uniqueJobs;"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        832,
+        0
+      ],
+      "id": "805a91e1-1da4-4cf9-894a-eb1cc6a77d7b",
+      "name": "Code in JavaScript1"
+    }
+  ],
+  "connections": {
+    "Schedule Trigger": {
+      "main": [
+        [
+          {
+            "node": "HTTP Request",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "HTTP Request": {
+      "main": [
+        [
+          {
+            "node": "Code in JavaScript",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code in JavaScript": {
+      "main": [
+        [
+          {
+            "node": "Get row(s) in sheet",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get row(s) in sheet": {
+      "main": [
+        [
+          {
+            "node": "Code in JavaScript1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code in JavaScript1": {
+      "main": [
+        [
+          {
+            "node": "Append row in sheet",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate",
+    "availableInMCP": false
+  },
+  "nodeGroups": [],
+  "pinData": {},
+  "activeVersionId": "70e9ca29-f6a6-4380-8082-fb59632aa80e",
+  "versionCounter": 12,
+  "sourceWorkflowId": null,
+  "tags": [],
+  "versionMetadata": {
+    "name": null,
+    "description": null
+  }
+}
